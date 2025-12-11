@@ -5,6 +5,8 @@ import Astrolabe from './components/Astrolabe';
 import GestureController from './components/GestureController';
 import MysticBook from './components/MysticBook';
 import MysticArtifact from './components/MysticArtifact';
+import MysticZodiacWhite from './components/MysticZodiacWhite';
+import MysticZodiacGold from './components/MysticZodiacGold';
 import GameController from './components/GameController';
 import { getCosmicReading } from './services/geminiService';
 import { AppState, AppMode, Reading, RevealType } from './types';
@@ -331,9 +333,14 @@ const App: React.FC = () => {
       
       setAppState(AppState.OPENING);
       
-      // Randomly decide which visual to show (Book or Artifact)
-      // 50% chance for either the Text Book or the Golden Mandala Artifact
-      const nextRevealType = Math.random() > 0.5 ? RevealType.BOOK : RevealType.ARTIFACT;
+      // Randomly decide which visual to show (Book, Artifact, Zodiac White, Zodiac Gold)
+      const rand = Math.random();
+      let nextRevealType;
+      if (rand < 0.25) nextRevealType = RevealType.BOOK;
+      else if (rand < 0.5) nextRevealType = RevealType.ARTIFACT;
+      else if (rand < 0.75) nextRevealType = RevealType.ZODIAC_WHITE;
+      else nextRevealType = RevealType.ZODIAC_GOLD;
+      
       setRevealType(nextRevealType);
 
       // Fetch reading from Gemini
@@ -341,7 +348,6 @@ const App: React.FC = () => {
       setReading(cosmicResult);
       
       // Delay slightly for dramatic effect before showing book fully
-      // REDUCED: from 1200 to 500 for snappier transition
       setTimeout(() => {
         setAppState(AppState.REVEALED);
       }, 500);
@@ -357,6 +363,21 @@ const App: React.FC = () => {
     initAudio(); // Ensure audio is ready if user hasn't interacted yet
     setAppState(AppState.SCANNING);
     setReading(null);
+  };
+
+  const renderRevealedContent = () => {
+      switch (revealType) {
+          case RevealType.BOOK:
+              return <MysticBook reading={reading} onReset={handleReset} />;
+          case RevealType.ARTIFACT:
+              return <MysticArtifact reading={reading} onReset={handleReset} />;
+          case RevealType.ZODIAC_WHITE:
+              return <MysticZodiacWhite reading={reading} onReset={handleReset} />;
+          case RevealType.ZODIAC_GOLD:
+              return <MysticZodiacGold reading={reading} onReset={handleReset} />;
+          default:
+              return <MysticBook reading={reading} onReset={handleReset} />;
+      }
   };
 
   return (
@@ -437,7 +458,6 @@ const App: React.FC = () => {
             <AnimatePresence>
               {(appState === AppState.SCANNING || appState === AppState.OPENING) && (
                   <motion.div
-                    // REDUCED: Duration from 1.0 to 0.6
                     exit={{ opacity: 0, scale: 2, filter: "blur(20px)" }}
                     transition={{ duration: 0.6, ease: "easeInOut" }}
                     className="absolute inset-0 z-20 flex items-center justify-center"
@@ -453,22 +473,15 @@ const App: React.FC = () => {
                 <motion.div 
                   initial={{ opacity: 0 }}
                   animate={{ opacity: [0, 1, 0] }}
-                  // REDUCED: Duration from 1.2 to 0.6
                   transition={{ duration: 0.6, times: [0, 0.4, 1] }} 
                   className="fixed inset-0 bg-[#F0E6D2] z-50 pointer-events-none mix-blend-overlay"
                 />
               )}
             </AnimatePresence>
 
-            {/* The Result: Book or Artifact */}
+            {/* The Result: Book, Artifact, or Zodiacs */}
             <AnimatePresence>
-              {appState === AppState.REVEALED && (
-                revealType === RevealType.BOOK ? (
-                    <MysticBook reading={reading} onReset={handleReset} />
-                ) : (
-                    <MysticArtifact reading={reading} onReset={handleReset} />
-                )
-              )}
+              {appState === AppState.REVEALED && renderRevealedContent()}
             </AnimatePresence>
           </div>
         </>

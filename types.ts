@@ -13,6 +13,8 @@ export enum AppMode {
 export enum RevealType {
   BOOK = 'BOOK',
   ARTIFACT = 'ARTIFACT',
+  ZODIAC_WHITE = 'ZODIAC_WHITE',
+  ZODIAC_GOLD = 'ZODIAC_GOLD',
 }
 
 export interface Reading {

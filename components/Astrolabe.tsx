@@ -56,7 +56,7 @@ const Astrolabe: React.FC<AstrolabeProps> = ({ active }) => {
         <motion.g 
             key={i} 
             transform={`rotate(${angle}) translate(0, -${radius})`}
-            whileHover={{ scale: 1.2, filter: "brightness(1.3)" }}
+            whileHover={{ scale: 1.2, filter: "brightness(1.3) drop-shadow(0 0 8px rgba(222, 200, 136, 0.5))" }}
             style={{ cursor: 'pointer' }}
         >
           {/* The circle container */}
@@ -75,15 +75,21 @@ const Astrolabe: React.FC<AstrolabeProps> = ({ active }) => {
   };
 
   // The 4 Intercardinal decorations (NE, SE, SW, NW) - smaller loops/lines
+  // UPDATED: Now uses motion.g and includes subtle hover effects
   const createIntercardinalDetails = (radius: number) => {
     return Array.from({ length: 4 }).map((_, i) => {
       const angle = i * 90 + 45;
       return (
-        <g key={i} transform={`rotate(${angle}) translate(0, -${radius})`}>
+        <motion.g 
+            key={i} 
+            transform={`rotate(${angle}) translate(0, -${radius})`}
+            whileHover={{ scale: 1.15, filter: "brightness(1.3) drop-shadow(0 0 5px rgba(222, 200, 136, 0.4))" }}
+            style={{ cursor: 'pointer' }}
+        >
            <path d="M -10 0 L 0 -20 L 10 0 Z" fill="none" stroke={GOLD} strokeWidth="1" />
            <line x1="0" y1="-20" x2="0" y2="-40" stroke={THIN_GOLD} />
            <circle cx="0" cy="0" r="5" fill={GOLD} />
-        </g>
+        </motion.g>
       );
     });
   };
