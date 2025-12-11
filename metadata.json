@@ -1,0 +1,7 @@
+{
+  "name": "Celestial Astrolabe Oracle",
+  "description": "A mystical star chart that responds to hand gestures. Form a 'Closed Fist' to open the Book of Secrets and receive a prophecy.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
