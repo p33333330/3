@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { FaceLandmarker, FilesetResolver } from '@mediapipe/tasks-vision';
-import { Play, RotateCcw, Skull } from 'lucide-react';
+import { Play, RotateCcw, Skull, ScanFace } from 'lucide-react';
 
 const EMOJIS = ['🌟', '🌙', '☀️', '🪐', '☄️', '🔮', '✨', '🧿'];
 const SPAWN_RATE = 60; // Frames between spawns
-const GRAVITY_SPEED = 3; // Base falling speed
+const GRAVITY_SPEED = 4; // Base falling speed
 
 interface GameItem {
   id: number;
@@ -20,15 +20,21 @@ const GameController: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [gameState, setGameState] = useState<'READY' | 'PLAYING' | 'GAMEOVER'>('READY');
   const [score, setScore] = useState(0);
+  const [isFaceDetected, setIsFaceDetected] = useState(false);
   
   // Refs for game loop to avoid re-renders
   const landmarkerRef = useRef<FaceLandmarker | null>(null);
   const requestRef = useRef<number>(0);
   const itemsRef = useRef<GameItem[]>([]);
   const headPosRef = useRef<{x: number, y: number} | null>(null);
+  const faceBoundsRef = useRef<{top: {x:number, y:number}, bottom: {x:number, y:number}, left: {x:number, y:number}, right: {x:number, y:number}} | null>(null);
   const frameCountRef = useRef(0);
   const scoreRef = useRef(0);
   const gameStateRef = useRef<'READY' | 'PLAYING' | 'GAMEOVER'>('READY');
+  const isFaceDetectedRef = useRef(false);
+  
+  // Particles for catch effect
+  const particlesRef = useRef<{x: number, y: number, vx: number, vy: number, life: number, color: string}[]>([]);
 
   useEffect(() => {
     const initFaceLandmarker = async () => {
@@ -64,6 +70,9 @@ const GameController: React.FC = () => {
   const startCamera = async () => {
     if (!videoRef.current) return;
     try {
+      // Small delay to ensure previous camera session is fully released
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { width: 1280, height: 720, facingMode: "user" } 
       });
@@ -83,9 +92,11 @@ const GameController: React.FC = () => {
   };
 
   const startGame = () => {
+    if (!isFaceDetectedRef.current) return;
     setScore(0);
     scoreRef.current = 0;
     itemsRef.current = [];
+    particlesRef.current = [];
     setGameState('PLAYING');
     gameStateRef.current = 'PLAYING';
   };
@@ -99,24 +110,60 @@ const GameController: React.FC = () => {
     loop();
   };
 
+  const spawnParticles = (x: number, y: number) => {
+    for (let i = 0; i < 12; i++) {
+        particlesRef.current.push({
+            x, y,
+            vx: (Math.random() - 0.5) * 12,
+            vy: (Math.random() - 0.5) * 12,
+            life: 1.0,
+            color: '#C5B358'
+        });
+    }
+  };
+
   const update = () => {
     if (!landmarkerRef.current || !videoRef.current || !canvasRef.current) return;
     
     // 1. Detect Face
+    // Check if video is actually ready
     if (videoRef.current.currentTime > 0 && !videoRef.current.paused && !videoRef.current.ended) {
       const startTimeMs = performance.now();
       const result = landmarkerRef.current.detectForVideo(videoRef.current, startTimeMs);
 
       if (result.faceLandmarks.length > 0) {
-        // Landmark 1 is usually the nose tip
-        const nose = result.faceLandmarks[0][1];
-        // Mirror the x coordinate because webcam is usually mirrored
+        const landmarks = result.faceLandmarks[0];
+        const width = canvasRef.current.width;
+        const height = canvasRef.current.height;
+
+        // Landmark 1 is the nose tip
+        const nose = landmarks[1];
+        
+        // Mirror X for user-facing camera feel
         headPosRef.current = {
-            x: (1 - nose.x) * canvasRef.current.width, 
-            y: nose.y * canvasRef.current.height
+            x: (1 - nose.x) * width, 
+            y: nose.y * height
         };
+
+        // Capture Diamond Points for UI
+        faceBoundsRef.current = {
+            top: { x: (1 - landmarks[10].x) * width, y: landmarks[10].y * height },
+            bottom: { x: (1 - landmarks[152].x) * width, y: landmarks[152].y * height },
+            left: { x: (1 - landmarks[234].x) * width, y: landmarks[234].y * height },
+            right: { x: (1 - landmarks[454].x) * width, y: landmarks[454].y * height }
+        };
+
+        if (!isFaceDetectedRef.current) {
+            isFaceDetectedRef.current = true;
+            setIsFaceDetected(true);
+        }
       } else {
         headPosRef.current = null;
+        faceBoundsRef.current = null;
+        if (isFaceDetectedRef.current) {
+            isFaceDetectedRef.current = false;
+            setIsFaceDetected(false);
+        }
       }
     }
 
@@ -124,46 +171,61 @@ const GameController: React.FC = () => {
 
     // 2. Spawn Items
     frameCountRef.current++;
-    if (frameCountRef.current % Math.max(20, SPAWN_RATE - Math.floor(scoreRef.current / 5)) === 0) {
+    // Increase difficulty: spawn faster as score goes up
+    const currentSpawnRate = Math.max(20, SPAWN_RATE - Math.floor(scoreRef.current * 0.8));
+    
+    if (frameCountRef.current % currentSpawnRate === 0) {
       const canvas = canvasRef.current;
       itemsRef.current.push({
         id: Date.now(),
-        x: Math.random() * (canvas.width - 50) + 25,
+        x: Math.random() * (canvas.width - 60) + 30,
         y: -50,
         emoji: EMOJIS[Math.floor(Math.random() * EMOJIS.length)],
-        speed: GRAVITY_SPEED + (scoreRef.current * 0.1)
+        speed: GRAVITY_SPEED + (scoreRef.current * 0.2)
       });
     }
 
     // 3. Update Items & Check Collisions
     const head = headPosRef.current;
     const itemsToRemove: number[] = [];
+    const canvas = canvasRef.current;
+    
+    // Responsive Hit Radius: 8% of the smaller screen dimension
+    const hitRadius = Math.min(canvas.width, canvas.height) * 0.08;
 
     itemsRef.current.forEach(item => {
       item.y += item.speed;
 
-      // Check Collision with Head (simple circle collision)
+      // Check Collision with Head
       if (head) {
         const dx = head.x - item.x;
         const dy = head.y - item.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
         
-        // Catch threshold (radius sum approx)
-        if (distance < 60) {
+        if (distance < hitRadius) {
           scoreRef.current += 1;
-          setScore(scoreRef.current);
+          setScore(scoreRef.current); // State update for UI
+          spawnParticles(item.x, item.y);
           itemsToRemove.push(item.id);
         }
       }
 
       // Check Floor (Game Over condition)
-      if (item.y > canvasRef.current.height) {
+      if (item.y > canvasRef.current.height + 20) {
         setGameState('GAMEOVER');
         gameStateRef.current = 'GAMEOVER';
       }
     });
 
     itemsRef.current = itemsRef.current.filter(i => !itemsToRemove.includes(i.id));
+
+    // 4. Update Particles
+    particlesRef.current.forEach(p => {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.life -= 0.05;
+    });
+    particlesRef.current = particlesRef.current.filter(p => p.life > 0);
   };
 
   const draw = () => {
@@ -180,45 +242,78 @@ const GameController: React.FC = () => {
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Draw Head Cursor (The "Basket")
-    if (headPosRef.current) {
-        ctx.shadowBlur = 20;
+    // Responsive sizing
+    const minDim = Math.min(canvas.width, canvas.height);
+    const hitRadius = minDim * 0.08;
+
+    // Draw Head Tracking Visuals
+    if (headPosRef.current && faceBoundsRef.current) {
+        ctx.shadowBlur = 15;
         ctx.shadowColor = '#C5B358';
+        ctx.strokeStyle = 'rgba(197, 179, 88, 0.4)';
+        ctx.lineWidth = 1;
+        
+        // Draw Mystical Face Diamond (Subtle)
+        const { top, bottom, left, right } = faceBoundsRef.current;
+        ctx.beginPath();
+        ctx.moveTo(top.x, top.y);
+        ctx.lineTo(left.x, left.y);
+        ctx.lineTo(bottom.x, bottom.y);
+        ctx.lineTo(right.x, right.y);
+        ctx.closePath();
+        ctx.stroke();
+
+        // Draw The "Basket" / Catcher
+        const headX = headPosRef.current.x;
+        const headY = headPosRef.current.y;
+
+        ctx.beginPath();
+        ctx.arc(headX, headY, hitRadius, 0, Math.PI * 2);
         ctx.strokeStyle = '#C5B358';
         ctx.lineWidth = 3;
-        
-        // Draw a mystical circle/rune at nose position
-        ctx.beginPath();
-        ctx.arc(headPosRef.current.x, headPosRef.current.y, 40, 0, Math.PI * 2);
-        ctx.stroke();
-        
-        // Inner detail
-        ctx.beginPath();
-        ctx.arc(headPosRef.current.x, headPosRef.current.y, 30, 0, Math.PI * 2);
         ctx.setLineDash([5, 5]);
         ctx.stroke();
         ctx.setLineDash([]);
+
+        // Inner Glow
+        const gradient = ctx.createRadialGradient(headX, headY, 0, headX, headY, hitRadius);
+        gradient.addColorStop(0, 'rgba(197, 179, 88, 0.3)');
+        gradient.addColorStop(1, 'rgba(197, 179, 88, 0)');
+        ctx.fillStyle = gradient;
+        ctx.fill();
         
         ctx.shadowBlur = 0;
     }
 
     // Draw Items
-    ctx.font = "40px serif";
+    ctx.font = `${minDim * 0.08}px serif`; // Responsive font size
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     itemsRef.current.forEach(item => {
       ctx.fillText(item.emoji, item.x, item.y);
     });
 
-    // Draw Game Over Overlay in Canvas? No, handle in React UI for better buttons.
+    // Draw Particles
+    particlesRef.current.forEach(p => {
+        ctx.globalAlpha = p.life;
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+    });
   };
 
   return (
     <div className="absolute inset-0 z-40 flex items-center justify-center">
-        {/* Hidden Video Source */}
+        {/* 
+           CRITICAL FIX: Use opacity-0 instead of hidden. 
+           'display: none' (hidden) stops the video element from updating in some browsers, 
+           killing the MediaPipe tracking loop. 
+        */}
         <video 
             ref={videoRef} 
-            className="hidden" 
+            className="absolute opacity-0 pointer-events-none" 
             autoPlay 
             playsInline 
             muted 
@@ -232,7 +327,7 @@ const GameController: React.FC = () => {
             
             {/* HUD */}
             <div className="mt-20 flex gap-8">
-                 <div className="bg-black/40 border border-[#C5B358] px-6 py-2 rounded-full backdrop-blur-sm text-[#F0E6D2] font-serif text-2xl">
+                 <div className="bg-black/40 border border-[#C5B358] px-6 py-2 rounded-full backdrop-blur-sm text-[#F0E6D2] font-serif text-2xl animate-in fade-in slide-in-from-top-4">
                     SCORE: <span className="text-[#C5B358] font-bold">{score}</span>
                  </div>
             </div>
@@ -246,19 +341,35 @@ const GameController: React.FC = () => {
 
             {!loading && gameState === 'READY' && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm pointer-events-auto">
-                    <div className="text-center p-8 border-2 border-[#C5B358] bg-[#050a14]/90 rounded-lg max-w-md shadow-[0_0_50px_rgba(197,179,88,0.3)]">
+                    <div className="text-center p-8 border-2 border-[#C5B358] bg-[#050a14]/90 rounded-lg max-w-md shadow-[0_0_50px_rgba(197,179,88,0.3)] mx-4">
                         <h2 className="text-3xl font-serif text-[#F0E6D2] mb-4">Cosmic Catch</h2>
-                        <p className="text-[#F0E6D2]/80 mb-8 font-serif">
-                            Move your head to catch the falling celestial fragments.
-                            <br/><br/>
-                            <span className="text-red-400">WARNING:</span> If a single star falls to the abyss, the connection breaks.
+                        <p className="text-[#F0E6D2]/80 mb-6 font-serif">
+                            Align your face within the frame.
+                            <br/>
+                            Catch the falling stars with the golden circle.
+                            <br/>
+                            <span className="text-red-400 text-sm">Do not let them fall.</span>
                         </p>
+                        
+                        {/* Status Indicator */}
+                        <div className={`mb-8 flex items-center justify-center gap-2 font-serif text-sm tracking-widest uppercase transition-colors duration-300 ${isFaceDetected ? 'text-green-400' : 'text-red-400'}`}>
+                            {isFaceDetected ? (
+                                <><ScanFace size={18} /> Signal Acquired</>
+                            ) : (
+                                <><Skull size={18} /> Searching for Pilot...</>
+                            )}
+                        </div>
+
                         <button 
                             onClick={startGame}
-                            className="group relative px-8 py-3 bg-[#C5B358]/10 border border-[#C5B358] hover:bg-[#C5B358] transition-all duration-300"
+                            disabled={!isFaceDetected}
+                            className={`group relative px-8 py-3 border transition-all duration-300 w-full
+                            ${isFaceDetected 
+                                ? 'bg-[#C5B358]/10 border-[#C5B358] hover:bg-[#C5B358] cursor-pointer' 
+                                : 'bg-gray-900 border-gray-700 cursor-not-allowed opacity-50'}`}
                         >
-                            <span className="flex items-center gap-2 text-[#C5B358] group-hover:text-[#050a14] font-serif tracking-widest uppercase">
-                                <Play size={20} fill="currentColor" /> Begin
+                            <span className={`flex items-center justify-center gap-2 font-serif tracking-widest uppercase ${isFaceDetected ? 'text-[#C5B358] group-hover:text-[#050a14]' : 'text-gray-500'}`}>
+                                <Play size={20} fill={isFaceDetected ? "currentColor" : "none"} /> Begin
                             </span>
                         </button>
                     </div>
@@ -267,15 +378,15 @@ const GameController: React.FC = () => {
 
             {!loading && gameState === 'GAMEOVER' && (
                 <div className="absolute inset-0 flex items-center justify-center bg-red-950/40 backdrop-blur-sm pointer-events-auto">
-                    <div className="text-center p-8 border-2 border-red-500/50 bg-[#050a14]/90 rounded-lg max-w-md shadow-[0_0_50px_rgba(255,0,0,0.2)]">
-                        <Skull className="w-16 h-16 text-red-500 mx-auto mb-4" />
-                        <h2 className="text-4xl font-serif text-red-500 mb-2">Connection Lost</h2>
+                    <div className="text-center p-8 border-2 border-red-500/50 bg-[#050a14]/90 rounded-lg max-w-md shadow-[0_0_50px_rgba(255,0,0,0.2)] mx-4">
+                        <Skull className="w-16 h-16 text-red-500 mx-auto mb-4 animate-bounce" />
+                        <h2 className="text-4xl font-serif text-red-500 mb-2">Stars Fallen</h2>
                         <p className="text-[#F0E6D2] font-serif text-xl mb-6">Final Score: {score}</p>
                         <button 
                             onClick={startGame}
-                            className="group px-8 py-3 bg-red-500/10 border border-red-500 hover:bg-red-500 transition-all duration-300"
+                            className="group px-8 py-3 bg-red-500/10 border border-red-500 hover:bg-red-500 transition-all duration-300 w-full"
                         >
-                            <span className="flex items-center gap-2 text-red-500 group-hover:text-white font-serif tracking-widest uppercase">
+                            <span className="flex items-center justify-center gap-2 text-red-500 group-hover:text-white font-serif tracking-widest uppercase">
                                 <RotateCcw size={20} /> Realign
                             </span>
                         </button>
