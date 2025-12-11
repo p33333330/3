@@ -16,7 +16,7 @@ const MysticBook: React.FC<MysticBookProps> = ({ reading, onReset }) => {
       initial={{ opacity: 0, scale: 0.8 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.8 }}
-      transition={{ duration: 0.8, ease: "easeOut" }} // Faster entry
+      transition={{ duration: 0.5, ease: "easeOut" }} // Reduced from 0.8 to 0.5
       className="fixed inset-0 flex items-center justify-center z-40 p-4"
     >
       <div className="relative w-full max-w-3xl aspect-[4/3] bg-[#090e1a] border-2 border-[#C5B358] shadow-[0_0_50px_rgba(197,179,88,0.2)] rounded-lg flex overflow-hidden">
@@ -71,7 +71,7 @@ const MysticBook: React.FC<MysticBookProps> = ({ reading, onReset }) => {
              <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.3, duration: 0.8 }} // Faster text fade in
+                transition={{ delay: 0.2, duration: 0.5 }} // Reduced delay and duration
              >
                 <h2 className="text-3xl font-serif text-[#F0E6D2] mb-6 border-b border-[#C5B358] pb-4">
                   {reading.title}
@@ -84,12 +84,15 @@ const MysticBook: React.FC<MysticBookProps> = ({ reading, onReset }) => {
                 </p>
                 
                 <div className="mt-12 flex justify-center">
-                  <button 
-                    onClick={onReset}
-                    className="flex items-center gap-2 px-6 py-2 border border-[#C5B358] text-[#C5B358] hover:bg-[#C5B358] hover:text-[#050a14] transition-colors duration-300 font-serif uppercase tracking-widest text-sm"
-                  >
-                    <RefreshCw size={16} /> Close Tome
-                  </button>
+                  <div className="flex flex-col items-center gap-2">
+                      <button 
+                        onClick={onReset}
+                        className="flex items-center gap-2 px-6 py-2 border border-[#C5B358] text-[#C5B358] hover:bg-[#C5B358] hover:text-[#050a14] transition-colors duration-300 font-serif uppercase tracking-widest text-sm"
+                      >
+                        <RefreshCw size={16} /> Close Tome
+                      </button>
+                      <span className="text-[#C5B358]/50 text-[10px] tracking-widest uppercase mt-2">OPEN HAND TO RELEASE</span>
+                  </div>
                 </div>
              </motion.div>
            ) : (

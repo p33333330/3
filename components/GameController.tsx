@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { FaceLandmarker, FilesetResolver } from '@mediapipe/tasks-vision';
 import { Play, RotateCcw, Skull, ScanFace } from 'lucide-react';
+import GameBackground from './GameBackground';
+import { motion } from 'framer-motion';
 
 const EMOJIS = ['🌟', '🌙', '☀️', '🪐', '☄️', '🔮', '✨', '🧿'];
 const SPAWN_RATE = 60; // Frames between spawns
@@ -14,13 +16,19 @@ interface GameItem {
   speed: number;
 }
 
-const GameController: React.FC = () => {
+interface GameControllerProps {
+  onCatch?: () => void;
+  onMiss?: () => void;
+}
+
+const GameController: React.FC<GameControllerProps> = ({ onCatch, onMiss }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [loading, setLoading] = useState(true);
   const [gameState, setGameState] = useState<'READY' | 'PLAYING' | 'GAMEOVER'>('READY');
   const [score, setScore] = useState(0);
   const [isFaceDetected, setIsFaceDetected] = useState(false);
+  const [isMilestone, setIsMilestone] = useState(false);
   
   // Refs for game loop to avoid re-renders
   const landmarkerRef = useRef<FaceLandmarker | null>(null);
@@ -37,13 +45,18 @@ const GameController: React.FC = () => {
   const particlesRef = useRef<{x: number, y: number, vx: number, vy: number, life: number, color: string}[]>([]);
 
   useEffect(() => {
+    let isMounted = true;
+    let landmarkerInstance: FaceLandmarker | null = null;
+
     const initFaceLandmarker = async () => {
       try {
         const filesetResolver = await FilesetResolver.forVisionTasks(
-          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm"
+          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/wasm"
         );
         
-        landmarkerRef.current = await FaceLandmarker.createFromOptions(filesetResolver, {
+        if (!isMounted) return;
+
+        landmarkerInstance = await FaceLandmarker.createFromOptions(filesetResolver, {
           baseOptions: {
             modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
             delegate: "GPU"
@@ -53,6 +66,12 @@ const GameController: React.FC = () => {
           numFaces: 1
         });
         
+        if (!isMounted) {
+            landmarkerInstance.close();
+            return;
+        }
+
+        landmarkerRef.current = landmarkerInstance;
         setLoading(false);
         startCamera();
       } catch (error) {
@@ -63,7 +82,12 @@ const GameController: React.FC = () => {
     initFaceLandmarker();
 
     return () => {
+      isMounted = false;
       stopCamera();
+      if (landmarkerRef.current) {
+        landmarkerRef.current.close();
+        landmarkerRef.current = null;
+      }
     };
   }, []);
 
@@ -110,14 +134,14 @@ const GameController: React.FC = () => {
     loop();
   };
 
-  const spawnParticles = (x: number, y: number) => {
-    for (let i = 0; i < 12; i++) {
+  const spawnParticles = (x: number, y: number, color: string = '#C5B358') => {
+    for (let i = 0; i < 15; i++) {
         particlesRef.current.push({
             x, y,
             vx: (Math.random() - 0.5) * 12,
             vy: (Math.random() - 0.5) * 12,
             life: 1.0,
-            color: '#C5B358'
+            color: color
         });
     }
   };
@@ -167,9 +191,17 @@ const GameController: React.FC = () => {
       }
     }
 
+    // 2. Update Particles (Always update particles for visual effects even in Game Over)
+    particlesRef.current.forEach(p => {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.life -= 0.05;
+    });
+    particlesRef.current = particlesRef.current.filter(p => p.life > 0);
+
     if (gameStateRef.current !== 'PLAYING') return;
 
-    // 2. Spawn Items
+    // 3. Spawn Items
     frameCountRef.current++;
     // Increase difficulty: spawn faster as score goes up
     const currentSpawnRate = Math.max(20, SPAWN_RATE - Math.floor(scoreRef.current * 0.8));
@@ -185,7 +217,7 @@ const GameController: React.FC = () => {
       });
     }
 
-    // 3. Update Items & Check Collisions
+    // 4. Update Items & Check Collisions
     const head = headPosRef.current;
     const itemsToRemove: number[] = [];
     const canvas = canvasRef.current;
@@ -205,27 +237,32 @@ const GameController: React.FC = () => {
         if (distance < hitRadius) {
           scoreRef.current += 1;
           setScore(scoreRef.current); // State update for UI
-          spawnParticles(item.x, item.y);
+          
+          // Milestone check
+          if (scoreRef.current % 10 === 0 && scoreRef.current > 0) {
+            setIsMilestone(true);
+            setTimeout(() => setIsMilestone(false), 1000);
+          }
+
+          spawnParticles(item.x, item.y, '#C5B358');
+          if (onCatch) onCatch(); // Play Sound
           itemsToRemove.push(item.id);
         }
       }
 
       // Check Floor (Game Over condition)
       if (item.y > canvasRef.current.height + 20) {
+        // VISUAL FEEDBACK: Spawn Red Particles
+        spawnParticles(item.x, canvasRef.current.height - 20, '#ef4444');
+        // SOUND FEEDBACK
+        if (onMiss) onMiss();
+
         setGameState('GAMEOVER');
         gameStateRef.current = 'GAMEOVER';
       }
     });
 
     itemsRef.current = itemsRef.current.filter(i => !itemsToRemove.includes(i.id));
-
-    // 4. Update Particles
-    particlesRef.current.forEach(p => {
-        p.x += p.vx;
-        p.y += p.vy;
-        p.life -= 0.05;
-    });
-    particlesRef.current = particlesRef.current.filter(p => p.life > 0);
   };
 
   const draw = () => {
@@ -298,14 +335,18 @@ const GameController: React.FC = () => {
         ctx.globalAlpha = p.life;
         ctx.fillStyle = p.color;
         ctx.beginPath();
-        ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+        ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
         ctx.fill();
         ctx.globalAlpha = 1.0;
     });
   };
 
   return (
-    <div className="absolute inset-0 z-40 flex items-center justify-center">
+    <div className="absolute inset-0 z-40 flex items-center justify-center bg-[#050a14]">
+        
+        {/* --- DYNAMIC BACKGROUND --- */}
+        <GameBackground score={score} />
+
         {/* 
            CRITICAL FIX: Use opacity-0 instead of hidden. 
            'display: none' (hidden) stops the video element from updating in some browsers, 
@@ -320,16 +361,20 @@ const GameController: React.FC = () => {
         />
         
         {/* Game Canvas */}
-        <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
+        <canvas ref={canvasRef} className="absolute inset-0 w-full h-full z-10" />
 
         {/* UI Overlay */}
-        <div className="absolute inset-0 pointer-events-none flex flex-col items-center">
+        <div className="absolute inset-0 pointer-events-none flex flex-col items-center z-20">
             
             {/* HUD */}
             <div className="mt-20 flex gap-8">
-                 <div className="bg-black/40 border border-[#C5B358] px-6 py-2 rounded-full backdrop-blur-sm text-[#F0E6D2] font-serif text-2xl animate-in fade-in slide-in-from-top-4">
+                 <motion.div 
+                   animate={isMilestone ? { scale: [1, 1.2, 1], borderColor: ['#C5B358', '#fff', '#C5B358'] } : {}}
+                   transition={{ duration: 0.5 }}
+                   className="bg-black/40 border border-[#C5B358] px-6 py-2 rounded-full backdrop-blur-sm text-[#F0E6D2] font-serif text-2xl animate-in fade-in slide-in-from-top-4 shadow-lg"
+                 >
                     SCORE: <span className="text-[#C5B358] font-bold">{score}</span>
-                 </div>
+                 </motion.div>
             </div>
 
             {/* Screens */}
@@ -377,7 +422,7 @@ const GameController: React.FC = () => {
             )}
 
             {!loading && gameState === 'GAMEOVER' && (
-                <div className="absolute inset-0 flex items-center justify-center bg-red-950/40 backdrop-blur-sm pointer-events-auto">
+                <div className="absolute inset-0 flex items-center justify-center bg-red-950/40 backdrop-blur-sm pointer-events-auto animate-in fade-in duration-500">
                     <div className="text-center p-8 border-2 border-red-500/50 bg-[#050a14]/90 rounded-lg max-w-md shadow-[0_0_50px_rgba(255,0,0,0.2)] mx-4">
                         <Skull className="w-16 h-16 text-red-500 mx-auto mb-4 animate-bounce" />
                         <h2 className="text-4xl font-serif text-red-500 mb-2">Stars Fallen</h2>

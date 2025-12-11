@@ -10,6 +10,11 @@ export enum AppMode {
   GAME = 'GAME',
 }
 
+export enum RevealType {
+  BOOK = 'BOOK',
+  ARTIFACT = 'ARTIFACT',
+}
+
 export interface Reading {
   title: string;
   prophecy: string;

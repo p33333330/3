@@ -4,16 +4,20 @@ import StarBackground from './components/StarBackground';
 import Astrolabe from './components/Astrolabe';
 import GestureController from './components/GestureController';
 import MysticBook from './components/MysticBook';
+import MysticArtifact from './components/MysticArtifact';
 import GameController from './components/GameController';
 import { getCosmicReading } from './services/geminiService';
-import { AppState, AppMode, Reading } from './types';
+import { AppState, AppMode, Reading, RevealType } from './types';
 import { Sparkles, Gamepad2, Eye, Volume2, VolumeX } from 'lucide-react';
+import CosmicExplosion from './components/CosmicExplosion';
 
 const App: React.FC = () => {
   const [appMode, setAppMode] = useState<AppMode>(AppMode.ORACLE);
   const [appState, setAppState] = useState<AppState>(AppState.IDLE);
   const [reading, setReading] = useState<Reading | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [revealType, setRevealType] = useState<RevealType>(RevealType.BOOK);
+  const [isExploding, setIsExploding] = useState(false);
 
   // --- AUDIO ENGINE ---
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -51,6 +55,81 @@ const App: React.FC = () => {
     
     osc.start(now);
     osc.stop(now + 2);
+  }, [soundEnabled]);
+
+  const playLockSound = useCallback(() => {
+    if (!soundEnabled || !audioCtxRef.current) return;
+    const ctx = audioCtxRef.current;
+    const now = ctx.currentTime;
+
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    
+    // Sharp magical "click"
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(440, now);
+    osc.frequency.exponentialRampToValueAtTime(880, now + 0.1);
+    
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.1, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+    
+    osc.start(now);
+    osc.stop(now + 0.2);
+  }, [soundEnabled]);
+
+  const playCatchSound = useCallback(() => {
+    if (!soundEnabled || !audioCtxRef.current) return;
+    const ctx = audioCtxRef.current;
+    const now = ctx.currentTime;
+
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    // Magical high-pitched "sparkle" ping
+    // Randomize pitch slightly to avoid fatigue
+    const baseFreq = 880 + Math.random() * 200; 
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(baseFreq, now);
+    osc.frequency.exponentialRampToValueAtTime(baseFreq * 2, now + 0.1);
+
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.05, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+
+    osc.start(now);
+    osc.stop(now + 0.3);
+  }, [soundEnabled]);
+
+  const playMissSound = useCallback(() => {
+    if (!soundEnabled || !audioCtxRef.current) return;
+    const ctx = audioCtxRef.current;
+    const now = ctx.currentTime;
+
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    // Dissonant low tone for miss
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(150, now);
+    osc.frequency.exponentialRampToValueAtTime(50, now + 0.4);
+
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.2, now + 0.05);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+
+    osc.start(now);
+    osc.stop(now + 0.4);
   }, [soundEnabled]);
 
   const playRevealSound = useCallback(() => {
@@ -103,6 +182,58 @@ const App: React.FC = () => {
     noise.start(now);
   }, [soundEnabled]);
 
+  const playExplosionSound = useCallback(() => {
+    if (!soundEnabled || !audioCtxRef.current) return;
+    const ctx = audioCtxRef.current;
+    const now = ctx.currentTime;
+
+    // SHATTER Sound
+    
+    // 1. White Noise Crack (Highpass)
+    const bufferSize = ctx.sampleRate * 0.5;
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+
+    const noise = ctx.createBufferSource();
+    noise.buffer = buffer;
+    
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'highpass';
+    filter.frequency.setValueAtTime(800, now);
+    filter.frequency.exponentialRampToValueAtTime(100, now + 0.5);
+
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.setValueAtTime(0.4, now);
+    noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+
+    noise.connect(filter);
+    filter.connect(noiseGain);
+    noiseGain.connect(ctx.destination);
+    noise.start(now);
+
+    // 2. Metal/Glass Debris (Random high frequency pings)
+    for (let i = 0; i < 5; i++) {
+        const osc = ctx.createOscillator();
+        const oscGain = ctx.createGain();
+        osc.connect(oscGain);
+        oscGain.connect(ctx.destination);
+        
+        const freq = 1200 + Math.random() * 2000;
+        const startTime = now + Math.random() * 0.2;
+        
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, startTime);
+        
+        oscGain.gain.setValueAtTime(0, startTime);
+        oscGain.gain.linearRampToValueAtTime(0.1, startTime + 0.01);
+        oscGain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.15);
+        
+        osc.start(startTime);
+        osc.stop(startTime + 0.2);
+    }
+  }, [soundEnabled]);
+
   const toggleAmbient = useCallback((play: boolean) => {
     if (!soundEnabled || !audioCtxRef.current) return;
     const ctx = audioCtxRef.current;
@@ -153,12 +284,12 @@ const App: React.FC = () => {
 
   // Handle ambient sound based on AppState
   useEffect(() => {
-    if (appMode === AppMode.ORACLE && (appState === AppState.SCANNING || appState === AppState.OPENING)) {
+    if (appMode === AppMode.ORACLE && !isExploding && (appState === AppState.SCANNING || appState === AppState.OPENING)) {
         toggleAmbient(true);
     } else {
         toggleAmbient(false);
     }
-  }, [appMode, appState, toggleAmbient]);
+  }, [appMode, appState, toggleAmbient, isExploding]);
 
   // Handle sound toggle
   useEffect(() => {
@@ -171,11 +302,11 @@ const App: React.FC = () => {
          if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
              audioCtxRef.current.resume();
          }
-         if (appMode === AppMode.ORACLE && appState === AppState.SCANNING) {
+         if (appMode === AppMode.ORACLE && appState === AppState.SCANNING && !isExploding) {
              toggleAmbient(true);
          }
      }
-  }, [soundEnabled, appMode, appState, toggleAmbient]);
+  }, [soundEnabled, appMode, appState, toggleAmbient, isExploding]);
 
 
   // Auto-start scanning on mount
@@ -186,21 +317,41 @@ const App: React.FC = () => {
   }, [appMode]);
 
   const handleGestureDetected = useCallback(async (gesture: string) => {
-    // Only react to gesture if in scanning mode
+    // 1. OPEN PALM - Reset / Shatter (Available in REVEALED state)
+    if (appMode === AppMode.ORACLE && appState === AppState.REVEALED && gesture === "OPEN_PALM") {
+        playExplosionSound(); // Plays Shatter sound
+        setIsExploding(true);
+        return;
+    }
+
+    // 2. CLOSED FIST - Reveal Prophecy (Available in SCANNING state)
     if (appMode === AppMode.ORACLE && appState === AppState.SCANNING && gesture === "CLOSED_FIST") {
-      playRevealSound(); // Trigger sound
+      playLockSound(); // Immediate feedback
+      setTimeout(playRevealSound, 150); // Delayed swoosh
+      
       setAppState(AppState.OPENING);
       
+      // Randomly decide which visual to show (Book or Artifact)
+      // 50% chance for either the Text Book or the Golden Mandala Artifact
+      const nextRevealType = Math.random() > 0.5 ? RevealType.BOOK : RevealType.ARTIFACT;
+      setRevealType(nextRevealType);
+
       // Fetch reading from Gemini
       const cosmicResult = await getCosmicReading();
       setReading(cosmicResult);
       
       // Delay slightly for dramatic effect before showing book fully
+      // REDUCED: from 1200 to 500 for snappier transition
       setTimeout(() => {
         setAppState(AppState.REVEALED);
-      }, 1200);
+      }, 500);
     }
-  }, [appState, appMode, playRevealSound]);
+  }, [appState, appMode, playRevealSound, playLockSound, playExplosionSound]);
+
+  const handleExplosionComplete = () => {
+    setIsExploding(false);
+    handleReset();
+  };
 
   const handleReset = () => {
     initAudio(); // Ensure audio is ready if user hasn't interacted yet
@@ -211,50 +362,54 @@ const App: React.FC = () => {
   return (
     <div className="relative w-full h-screen text-[#F0E6D2] overflow-hidden" onClick={initAudio}>
       <StarBackground />
+      
+      {isExploding && <CosmicExplosion onComplete={handleExplosionComplete} />}
 
       {/* Mode Switcher UI */}
-      <div className="absolute top-0 left-0 w-full z-50 p-4 flex justify-between items-start pointer-events-none">
-         <div className="pointer-events-auto">
-            <button 
-                onClick={() => setSoundEnabled(!soundEnabled)}
-                className="p-2 rounded-full bg-[#050a14]/60 text-[#C5B358] border border-[#C5B358]/30 hover:bg-[#C5B358]/10 transition-colors"
-                title={soundEnabled ? "Mute" : "Unmute"}
-            >
-                {soundEnabled ? <Volume2 size={20} /> : <VolumeX size={20} />}
-            </button>
-         </div>
-         <div className="flex gap-2 bg-[#050a14]/60 backdrop-blur-md border border-[#C5B358]/30 rounded-full p-1 pointer-events-auto">
-            <button 
-              onClick={() => {
-                initAudio();
-                playModeChime();
-                setAppMode(AppMode.ORACLE);
-                setAppState(AppState.SCANNING);
-                setReading(null);
-              }}
-              className={`flex items-center gap-2 px-4 py-2 rounded-full transition-all duration-300 ${appMode === AppMode.ORACLE ? 'bg-[#C5B358] text-[#050a14]' : 'text-[#C5B358] hover:bg-[#C5B358]/10'}`}
-            >
-               <Eye size={16} /> <span className="font-serif text-sm tracking-wide">ORACLE</span>
-            </button>
-            <button 
-              onClick={() => {
-                initAudio();
-                setAppMode(AppMode.GAME);
-              }}
-              className={`flex items-center gap-2 px-4 py-2 rounded-full transition-all duration-300 ${appMode === AppMode.GAME ? 'bg-[#C5B358] text-[#050a14]' : 'text-[#C5B358] hover:bg-[#C5B358]/10'}`}
-            >
-               <Gamepad2 size={16} /> <span className="font-serif text-sm tracking-wide">TRIALS</span>
-            </button>
-         </div>
-      </div>
+      {!isExploding && (
+        <div className="absolute top-0 left-0 w-full z-50 p-4 flex justify-between items-start pointer-events-none">
+            <div className="pointer-events-auto">
+                <button 
+                    onClick={() => setSoundEnabled(!soundEnabled)}
+                    className="p-2 rounded-full bg-[#050a14]/60 text-[#C5B358] border border-[#C5B358]/30 hover:bg-[#C5B358]/10 transition-colors"
+                    title={soundEnabled ? "Mute" : "Unmute"}
+                >
+                    {soundEnabled ? <Volume2 size={20} /> : <VolumeX size={20} />}
+                </button>
+            </div>
+            <div className="flex gap-2 bg-[#050a14]/60 backdrop-blur-md border border-[#C5B358]/30 rounded-full p-1 pointer-events-auto">
+                <button 
+                onClick={() => {
+                    initAudio();
+                    playModeChime();
+                    setAppMode(AppMode.ORACLE);
+                    setAppState(AppState.SCANNING);
+                    setReading(null);
+                }}
+                className={`flex items-center gap-2 px-4 py-2 rounded-full transition-all duration-300 ${appMode === AppMode.ORACLE ? 'bg-[#C5B358] text-[#050a14]' : 'text-[#C5B358] hover:bg-[#C5B358]/10'}`}
+                >
+                <Eye size={16} /> <span className="font-serif text-sm tracking-wide">ORACLE</span>
+                </button>
+                <button 
+                onClick={() => {
+                    initAudio();
+                    setAppMode(AppMode.GAME);
+                }}
+                className={`flex items-center gap-2 px-4 py-2 rounded-full transition-all duration-300 ${appMode === AppMode.GAME ? 'bg-[#C5B358] text-[#050a14]' : 'text-[#C5B358] hover:bg-[#C5B358]/10'}`}
+                >
+                <Gamepad2 size={16} /> <span className="font-serif text-sm tracking-wide">TRIALS</span>
+                </button>
+            </div>
+        </div>
+      )}
       
       {/* --- MODE: ORACLE --- */}
-      {appMode === AppMode.ORACLE && (
+      {appMode === AppMode.ORACLE && !isExploding && (
         <>
-          {/* Gesture Controller (Webcam) - Only active in Oracle Mode */}
+          {/* Gesture Controller (Webcam) */}
           <GestureController 
             onGestureDetected={handleGestureDetected} 
-            isActive={appState === AppState.SCANNING}
+            isActive={true}
           />
 
           {/* Main Content Layer */}
@@ -271,9 +426,8 @@ const App: React.FC = () => {
                 >
                   <h1 className="text-4xl md:text-6xl font-serif text-[#C5B358] tracking-[0.2em] mb-4 drop-shadow-[0_0_10px_rgba(197,179,88,0.5)]">ASTROLABE</h1>
                   <div className="flex items-center justify-center gap-2 text-sm md:text-lg text-[#F0E6D2] opacity-80 font-serif">
-                    <Sparkles size={16} className="text-[#C5B358]" />
-                    <span className="tracking-wider">HOLD "CLOSED FIST" TO SUMMON THE BOOK</span>
-                    <Sparkles size={16} className="text-[#C5B358]" />
+                     <Sparkles size={16} className="text-[#C5B358]" />
+                     <span className="tracking-wider">FIST: SUMMON</span>
                   </div>
                 </motion.div>
               )}
@@ -283,8 +437,9 @@ const App: React.FC = () => {
             <AnimatePresence>
               {(appState === AppState.SCANNING || appState === AppState.OPENING) && (
                   <motion.div
+                    // REDUCED: Duration from 1.0 to 0.6
                     exit={{ opacity: 0, scale: 2, filter: "blur(20px)" }}
-                    transition={{ duration: 1.0, ease: "easeInOut" }}
+                    transition={{ duration: 0.6, ease: "easeInOut" }}
                     className="absolute inset-0 z-20 flex items-center justify-center"
                   >
                     <Astrolabe active={appState === AppState.OPENING} />
@@ -298,16 +453,21 @@ const App: React.FC = () => {
                 <motion.div 
                   initial={{ opacity: 0 }}
                   animate={{ opacity: [0, 1, 0] }}
-                  transition={{ duration: 1.2, times: [0, 0.4, 1] }} // Slightly faster flash
+                  // REDUCED: Duration from 1.2 to 0.6
+                  transition={{ duration: 0.6, times: [0, 0.4, 1] }} 
                   className="fixed inset-0 bg-[#F0E6D2] z-50 pointer-events-none mix-blend-overlay"
                 />
               )}
             </AnimatePresence>
 
-            {/* The Mystic Book */}
+            {/* The Result: Book or Artifact */}
             <AnimatePresence>
               {appState === AppState.REVEALED && (
-                <MysticBook reading={reading} onReset={handleReset} />
+                revealType === RevealType.BOOK ? (
+                    <MysticBook reading={reading} onReset={handleReset} />
+                ) : (
+                    <MysticArtifact reading={reading} onReset={handleReset} />
+                )
               )}
             </AnimatePresence>
           </div>
@@ -315,8 +475,8 @@ const App: React.FC = () => {
       )}
 
       {/* --- MODE: GAME --- */}
-      {appMode === AppMode.GAME && (
-        <GameController />
+      {appMode === AppMode.GAME && !isExploding && (
+        <GameController onCatch={playCatchSound} onMiss={playMissSound} />
       )}
       
     </div>

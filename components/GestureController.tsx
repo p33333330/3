@@ -15,6 +15,7 @@ const GestureController: React.FC<GestureControllerProps> = ({ onGestureDetected
   
   // Visual feedback state
   const [isFistDetected, setIsFistDetected] = useState(false);
+  const [isPalmDetected, setIsPalmDetected] = useState(false);
 
   // Keep refs to avoid stale closures in the requestAnimationFrame loop
   const isActiveRef = useRef(isActive);
@@ -25,6 +26,7 @@ const GestureController: React.FC<GestureControllerProps> = ({ onGestureDetected
     // Reset detection state when becoming inactive
     if (!isActive) {
         setIsFistDetected(false);
+        setIsPalmDetected(false);
     }
   }, [isActive]);
 
@@ -34,13 +36,18 @@ const GestureController: React.FC<GestureControllerProps> = ({ onGestureDetected
   }, [onGestureDetected]);
 
   useEffect(() => {
+    let isMounted = true;
+    let recognizerInstance: GestureRecognizer | null = null;
+
     const initMediaPipe = async () => {
       try {
         const vision = await FilesetResolver.forVisionTasks(
-          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm"
+          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/wasm"
         );
         
-        recognizerRef.current = await GestureRecognizer.createFromOptions(vision, {
+        if (!isMounted) return;
+
+        recognizerInstance = await GestureRecognizer.createFromOptions(vision, {
           baseOptions: {
             modelAssetPath: "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task",
             delegate: "GPU"
@@ -49,6 +56,12 @@ const GestureController: React.FC<GestureControllerProps> = ({ onGestureDetected
           numHands: 1
         });
         
+        if (!isMounted) {
+            recognizerInstance.close();
+            return;
+        }
+
+        recognizerRef.current = recognizerInstance;
         setLoading(false);
         startCamera();
       } catch (error) {
@@ -59,7 +72,12 @@ const GestureController: React.FC<GestureControllerProps> = ({ onGestureDetected
     initMediaPipe();
 
     return () => {
+      isMounted = false;
       stopCamera();
+      if (recognizerRef.current) {
+        recognizerRef.current.close();
+        recognizerRef.current = null;
+      }
     };
   }, []);
 
@@ -96,24 +114,27 @@ const GestureController: React.FC<GestureControllerProps> = ({ onGestureDetected
           const result = recognizerRef.current.recognizeForVideo(videoRef.current, nowInMs);
 
           let fistFound = false;
+          let palmFound = false;
 
           if (result.gestures.length > 0) {
             const category = result.gestures[0][0];
             const gestureName = category.categoryName;
             const score = category.score;
 
-            // Debug log to help verify gestures if needed
-            // console.log(`Gesture: ${gestureName}, Score: ${score}`);
-
-            if (score > 0.5 && gestureName === "Closed_Fist") {
-                fistFound = true;
-                // Call the latest version of the callback via ref
-                onGestureDetectedRef.current("CLOSED_FIST");
+            if (score > 0.5) {
+                if (gestureName === "Closed_Fist") {
+                    fistFound = true;
+                    onGestureDetectedRef.current("CLOSED_FIST");
+                } else if (gestureName === "Open_Palm") {
+                    palmFound = true;
+                    onGestureDetectedRef.current("OPEN_PALM");
+                }
             }
           }
 
           // Update local state for visual feedback
           setIsFistDetected(fistFound);
+          setIsPalmDetected(palmFound);
        }
     }
 
@@ -127,13 +148,17 @@ const GestureController: React.FC<GestureControllerProps> = ({ onGestureDetected
         {isFistDetected && (
             <div className="absolute inset-0 -m-1 rounded-full border-4 border-[#C5B358] animate-ping opacity-75 pointer-events-none z-0" />
         )}
+        {isPalmDetected && (
+            <div className="absolute inset-0 -m-1 rounded-full border-4 border-cyan-400 animate-ping opacity-75 pointer-events-none z-0" />
+        )}
 
         {/* Container with dynamic border and shadow */}
         <div 
             className={`relative overflow-hidden rounded-full border-2 transition-all duration-300 w-32 h-32 bg-black z-10
             ${isFistDetected ? 'border-[#C5B358] shadow-[0_0_30px_#C5B358] scale-110' : 
-            isActive ? 'border-yellow-400 shadow-[0_0_15px_#C5B358]' : 
-            'border-gray-700 opacity-50'}`}
+              isPalmDetected ? 'border-cyan-400 shadow-[0_0_30px_cyan] scale-110' :
+              isActive ? 'border-yellow-400 shadow-[0_0_15px_#C5B358]' : 
+              'border-gray-700 opacity-50'}`}
         >
             {loading && <div className="absolute inset-0 flex items-center justify-center text-xs text-yellow-500">Loading Vision...</div>}
             {cameraError && <div className="absolute inset-0 flex items-center justify-center text-xs text-red-500 text-center p-1">Camera Denied</div>}
@@ -149,7 +174,7 @@ const GestureController: React.FC<GestureControllerProps> = ({ onGestureDetected
       </div>
       
       <div className="text-center mt-2 text-[#C5B358] text-xs font-serif tracking-widest uppercase">
-        {isFistDetected ? "GESTURE LOCKED" : isActive ? "Detecting..." : "Standby"}
+        {isFistDetected ? "LOCKED" : isPalmDetected ? "RELEASING..." : isActive ? "Detecting..." : "Standby"}
       </div>
     </div>
   );

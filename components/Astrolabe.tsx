@@ -1,5 +1,5 @@
-import React from 'react';
-import { motion } from 'framer-motion';
+import React, { useEffect } from 'react';
+import { motion, useMotionValue, useSpring, useTransform } from 'framer-motion';
 
 interface AstrolabeProps {
   active: boolean;
@@ -12,6 +12,27 @@ const THIN_GOLD = "rgba(222, 200, 136, 0.5)";
 
 const Astrolabe: React.FC<AstrolabeProps> = ({ active }) => {
   
+  // --- Mouse Parallax Logic ---
+  const mouseX = useMotionValue(0);
+  const mouseY = useMotionValue(0);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      // Normalize to -0.5 to 0.5
+      mouseX.set(e.clientX / window.innerWidth - 0.5);
+      mouseY.set(e.clientY / window.innerHeight - 0.5);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    return () => window.removeEventListener("mousemove", handleMouseMove);
+  }, [mouseX, mouseY]);
+
+  const springConfig = { damping: 20, stiffness: 100 };
+  
+  // Tilt angles (max 15 degrees)
+  const rotateX = useSpring(useTransform(mouseY, [-0.5, 0.5], [10, -10]), springConfig);
+  const rotateY = useSpring(useTransform(mouseX, [-0.5, 0.5], [-10, 10]), springConfig);
+
   // --- Geometry Generators ---
 
   // Generate the specific "text blocks" seen in the outer ring of Image 2
@@ -32,9 +53,14 @@ const Astrolabe: React.FC<AstrolabeProps> = ({ active }) => {
     return Array.from({ length: 4 }).map((_, i) => {
       const angle = i * 90;
       return (
-        <g key={i} transform={`rotate(${angle}) translate(0, -${radius})`}>
+        <motion.g 
+            key={i} 
+            transform={`rotate(${angle}) translate(0, -${radius})`}
+            whileHover={{ scale: 1.2, filter: "brightness(1.3)" }}
+            style={{ cursor: 'pointer' }}
+        >
           {/* The circle container */}
-          <circle cx="0" cy="0" r="35" fill="none" stroke={GOLD} strokeWidth="2" />
+          <circle cx="0" cy="0" r="35" fill="rgba(5, 10, 20, 0.8)" stroke={GOLD} strokeWidth="2" />
           <circle cx="0" cy="0" r="28" fill="none" stroke={THIN_GOLD} strokeWidth="1" />
           
           {/* Hexagram inside (2 triangles) */}
@@ -43,7 +69,7 @@ const Astrolabe: React.FC<AstrolabeProps> = ({ active }) => {
           
           {/* Center dot */}
           <circle cx="0" cy="0" r="3" fill={GOLD} />
-        </g>
+        </motion.g>
       );
     });
   };
@@ -65,9 +91,13 @@ const Astrolabe: React.FC<AstrolabeProps> = ({ active }) => {
   // The dense central web (Connection of many points)
   const createCentralWeb = () => {
     const outerPoints = 12;
+    const midPoints = 12;
     const innerPoints = 6;
+    
     const outerRadius = 160;
-    const innerRadius = 80;
+    const midRadius = 110;
+    const innerRadius = 60;
+    
     const lines = [];
 
     // Outer vertices
@@ -77,6 +107,13 @@ const Astrolabe: React.FC<AstrolabeProps> = ({ active }) => {
       outerVertices.push({ x: Math.cos(a) * outerRadius, y: Math.sin(a) * outerRadius });
     }
 
+    // Mid vertices (offset)
+    const midVertices = [];
+    for (let i = 0; i < midPoints; i++) {
+      const a = (i / midPoints) * Math.PI * 2 + (Math.PI / 12);
+      midVertices.push({ x: Math.cos(a) * midRadius, y: Math.sin(a) * midRadius });
+    }
+
     // Inner vertices (rotated slightly)
     const innerVertices = [];
     for (let i = 0; i < innerPoints; i++) {
@@ -84,101 +121,112 @@ const Astrolabe: React.FC<AstrolabeProps> = ({ active }) => {
       innerVertices.push({ x: Math.cos(a) * innerRadius, y: Math.sin(a) * innerRadius });
     }
 
-    // Connect outer to outer (skip connections for star patterns)
+    // Connect outer to outer
     for (let i = 0; i < outerPoints; i++) {
-        // Star pattern 1 (Skip 3)
-        const next = (i + 4) % outerPoints;
+        const next = (i + 5) % outerPoints;
         lines.push(
-            <line
-                key={`outer-${i}`}
-                x1={outerVertices[i].x}
-                y1={outerVertices[i].y}
-                x2={outerVertices[next].x}
-                y2={outerVertices[next].y}
-                stroke={THIN_GOLD}
-                strokeWidth="0.5"
-                opacity="0.5"
-            />
+            <line key={`o1-${i}`} x1={outerVertices[i].x} y1={outerVertices[i].y} x2={outerVertices[next].x} y2={outerVertices[next].y} stroke={THIN_GOLD} strokeWidth="0.5" opacity="0.3" />
         );
-        // Star pattern 2 (Skip 4)
-        const next2 = (i + 5) % outerPoints;
+    }
+    
+    // Connect Mid to Outer
+    for (let i = 0; i < midPoints; i++) {
+        const outerIdx = i;
+        const outerIdxNext = (i + 1) % outerPoints;
         lines.push(
-            <line
-                key={`outer2-${i}`}
-                x1={outerVertices[i].x}
-                y1={outerVertices[i].y}
-                x2={outerVertices[next2].x}
-                y2={outerVertices[next2].y}
-                stroke={THIN_GOLD}
-                strokeWidth="0.5"
-                opacity="0.3"
-            />
+            <line key={`mo1-${i}`} x1={midVertices[i].x} y1={midVertices[i].y} x2={outerVertices[outerIdx].x} y2={outerVertices[outerIdx].y} stroke={THIN_GOLD} strokeWidth="0.5" opacity="0.4" />
+        );
+        lines.push(
+            <line key={`mo2-${i}`} x1={midVertices[i].x} y1={midVertices[i].y} x2={outerVertices[outerIdxNext].x} y2={outerVertices[outerIdxNext].y} stroke={THIN_GOLD} strokeWidth="0.5" opacity="0.4" />
         );
     }
 
-    // Connect outer to inner rings
-    for (let i = 0; i < outerPoints; i++) {
-        const innerIdx = Math.floor(i / 2);
+    // Connect Inner to Mid
+    for (let i = 0; i < innerPoints; i++) {
+        const midIdx = i * 2;
         lines.push(
-             <line
-                key={`connect-${i}`}
-                x1={outerVertices[i].x}
-                y1={outerVertices[i].y}
-                x2={innerVertices[innerIdx].x}
-                y2={innerVertices[innerIdx].y}
-                stroke={THIN_GOLD}
-                strokeWidth="0.5"
-                opacity="0.4"
-             />
+             <line key={`im-${i}`} x1={innerVertices[i].x} y1={innerVertices[i].y} x2={midVertices[midIdx].x} y2={midVertices[midIdx].y} stroke={GOLD} strokeWidth="1" opacity="0.6" />
         );
     }
 
     // Inner hexagram geometry
     const innerHex = [];
     for(let i=0; i<innerPoints; i++) {
-        const next = (i + 2) % innerPoints; // Connect to skip 1 -> two large triangles
+        const next = (i + 2) % innerPoints; 
          innerHex.push(
-            <line
-                key={`inner-${i}`}
-                x1={innerVertices[i].x}
-                y1={innerVertices[i].y}
-                x2={innerVertices[next].x}
-                y2={innerVertices[next].y}
-                stroke={GOLD}
-                strokeWidth="1"
-            />
+            <line key={`ih-${i}`} x1={innerVertices[i].x} y1={innerVertices[i].y} x2={innerVertices[next].x} y2={innerVertices[next].y} stroke={GOLD} strokeWidth="1.5" />
          );
     }
 
     return (
         <g>
+            {/* NEW: Rotating Ring 1 (Counter-Clockwise, Dashed) - Between Inner and Mid */}
+            <motion.g 
+              animate={{ rotate: -360 }} 
+              transition={{ duration: active ? 3 : 20, repeat: Infinity, ease: "linear" }}
+            >
+                <circle cx="0" cy="0" r="85" fill="none" stroke={THIN_GOLD} strokeWidth="1" strokeDasharray="6 4" opacity="0.7" />
+            </motion.g>
+
+            {/* NEW: Rotating Ring 2 (Clockwise, Solid with Satellites) - Between Mid and Outer */}
+            <motion.g 
+              animate={{ rotate: 360 }} 
+              transition={{ duration: active ? 4 : 15, repeat: Infinity, ease: "linear" }}
+            >
+                <circle cx="0" cy="0" r="135" fill="none" stroke={GOLD} strokeWidth="0.5" opacity="0.4" />
+                {/* 3 Small orbiting satellites */}
+                {[0, 120, 240].map((angle, i) => (
+                    <circle 
+                        key={i} 
+                        cx={Math.cos(angle * Math.PI / 180) * 135} 
+                        cy={Math.sin(angle * Math.PI / 180) * 135} 
+                        r="3" 
+                        fill={GOLD}
+                    />
+                ))}
+            </motion.g>
+
             {lines}
             {innerHex}
             
-            {/* Small nodes on outer vertices */}
-            {outerVertices.map((v, i) => (
-                <circle key={`ov-${i}`} cx={v.x} cy={v.y} r="2" fill={GOLD} />
+            {/* Mid nodes */}
+            {midVertices.map((v, i) => (
+                <circle key={`mv-${i}`} cx={v.x} cy={v.y} r="2" fill={GOLD} opacity="0.8" />
             ))}
-             {/* Small animated nodes on inner vertices */}
+
+            {/* Small animated nodes on inner vertices */}
             {innerVertices.map((v, i) => (
                 <motion.circle 
                     key={`iv-${i}`} 
                     cx={v.x} cy={v.y} r="3" 
                     fill={DARK_BLUE} stroke={GOLD} strokeWidth="1"
-                    animate={{ r: [2, 4, 2], opacity: [0.6, 1, 0.6] }}
-                    transition={{ duration: 2, repeat: Infinity, delay: i * 0.3 }}
+                    animate={{ r: [3, 5, 3], opacity: [0.6, 1, 0.6] }}
+                    transition={{ duration: active ? 0.2 : 2, repeat: Infinity, delay: i * 0.3 }}
                 />
             ))}
+            
+            {/* Center Eye/Core */}
+             <motion.g whileHover={{ scale: 1.5 }}>
+                 <circle cx="0" cy="0" r="15" fill={DARK_BLUE} stroke={GOLD} strokeWidth="2" style={{ cursor: "pointer" }} />
+                 <circle cx="0" cy="0" r="4" fill={GOLD}>
+                     <animate attributeName="opacity" values="0.5;1;0.5" dur={active ? "0.2s" : "3s"} repeatCount="indefinite" />
+                 </circle>
+             </motion.g>
         </g>
     );
   };
 
   return (
     <motion.div
-      className="relative w-full h-full flex items-center justify-center pointer-events-none select-none"
+      className="relative w-full h-full flex items-center justify-center select-none"
+      style={{
+        rotateX,
+        rotateY,
+        perspective: 1000
+      }}
       animate={{ 
-        scale: active ? 1.05 : 1, 
-        filter: active ? "brightness(1.5) drop-shadow(0 0 10px rgba(222, 200, 136, 0.5))" : "brightness(1)" 
+        scale: active ? 1.1 : 1, 
+        filter: active ? "brightness(1.5) drop-shadow(0 0 20px rgba(222, 200, 136, 0.8))" : "brightness(1) drop-shadow(0 0 10px rgba(222, 200, 136, 0.2))"
       }}
       transition={{ duration: 1.5 }}
     >
@@ -187,7 +235,7 @@ const Astrolabe: React.FC<AstrolabeProps> = ({ active }) => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 2 }}
-            className="absolute inset-4 md:inset-8 border-2 border-[#dec888] z-0"
+            className="absolute inset-4 md:inset-8 border-2 border-[#dec888] z-0 pointer-events-none"
         >
              {/* Inner thin border */}
              <div className="absolute inset-2 border border-[rgba(222,200,136,0.5)]"></div>
@@ -222,7 +270,10 @@ const Astrolabe: React.FC<AstrolabeProps> = ({ active }) => {
         style={{ overflow: "visible" }}
       >
         {/* --- ROTATING GROUP START --- */}
-        <motion.g animate={{ rotate: 360 }} transition={{ duration: 120, repeat: Infinity, ease: "linear" }}>
+        <motion.g 
+          animate={{ rotate: 360 }} 
+          transition={{ duration: active ? 5 : 40, repeat: Infinity, ease: active ? "circIn" : "linear" }}
+        >
             
             {/* Outer Static-ish Rings */}
             <circle cx="0" cy="0" r="380" fill="none" stroke={GOLD} strokeWidth="2" />
@@ -260,38 +311,35 @@ const Astrolabe: React.FC<AstrolabeProps> = ({ active }) => {
                 />
             ))}
 
-            {/* --- NEW: Orbiting Elements --- */}
+            {/* --- NEW: Orbiting Elements (Outer) --- */}
             
-            {/* Orbital Path 1 */}
-            <circle cx="0" cy="0" r="140" fill="none" stroke={THIN_GOLD} strokeWidth="0.5" strokeDasharray="5 5" opacity="0.5" />
-            {/* Fast Moon (Clockwise) */}
-            <motion.g animate={{ rotate: 360 }} transition={{ duration: 20, repeat: Infinity, ease: "linear" }}>
-                 <circle cx="0" cy="-140" r="5" fill={DARK_BLUE} stroke={GOLD} strokeWidth="1" />
-                 <circle cx="0" cy="-140" r="8" fill="none" stroke={THIN_GOLD} strokeWidth="0.5" />
+            {/* Independent rotating ring 1 (Counter-Clockwise) */}
+            <motion.g 
+              animate={{ rotate: -720 }} 
+              transition={{ duration: active ? 10 : 60, repeat: Infinity, ease: "linear" }}
+            >
+                 <circle cx="0" cy="0" r="150" fill="none" stroke={THIN_GOLD} strokeWidth="1" strokeDasharray="10 5" opacity="0.6"/>
+                 <circle cx="0" cy="-150" r="6" fill={DARK_BLUE} stroke={GOLD} strokeWidth="2" />
             </motion.g>
 
-            {/* Orbital Path 2 */}
-            <circle cx="0" cy="0" r="110" fill="none" stroke={THIN_GOLD} strokeWidth="0.5" strokeDasharray="2 4" opacity="0.3" />
-            {/* Slower Planet (Counter-Clockwise) */}
-            <motion.g animate={{ rotate: -360 }} transition={{ duration: 35, repeat: Infinity, ease: "linear" }}>
-                 <g transform="translate(0, 110)">
-                    <rect x="-4" y="-4" width="8" height="8" fill={GOLD} transform="rotate(45)" />
-                 </g>
+            {/* Independent rotating ring 2 (Clockwise) */}
+            <motion.g 
+              animate={{ rotate: 360 }} 
+              transition={{ duration: active ? 5 : 30, repeat: Infinity, ease: "linear" }}
+            >
+                 <circle cx="0" cy="0" r="125" fill="none" stroke={THIN_GOLD} strokeWidth="0.5" strokeDasharray="3 3" opacity="0.4"/>
+                 {/* 3 small satellites */}
+                 {[0, 120, 240].map(angle => (
+                     <g key={angle} transform={`rotate(${angle}) translate(0, -125)`}>
+                        <circle r="3" fill={GOLD} />
+                     </g>
+                 ))}
             </motion.g>
 
             {/* --- END New Orbitals --- */}
 
             {/* Central Web (Enhanced) */}
             {createCentralWeb()}
-            
-            {/* Center Core */}
-            <circle cx="0" cy="0" r="40" fill={DARK_BLUE} stroke={GOLD} strokeWidth="2" />
-            {/* Hexagram in very center */}
-            <polygon points="0,-30 26,15 -26,15" fill="none" stroke={GOLD} strokeWidth="1.5" />
-            <polygon points="0,30 26,-15 -26,-15" fill="none" stroke={GOLD} strokeWidth="1.5" />
-            
-            {/* Central Point */}
-            <circle cx="0" cy="0" r="5" fill={GOLD} />
             
             {/* Decorative small circles on the outer web vertices */}
             {Array.from({length: 12}).map((_, i) => (
@@ -307,7 +355,7 @@ const Astrolabe: React.FC<AstrolabeProps> = ({ active }) => {
         </motion.g>
         {/* --- ROTATING GROUP END --- */}
 
-        {/* --- STATIC OVERLAYS --- */}
+        {/* --- STATIC OVERLAYS (Outside the 360 rotation) --- */}
         <line x1="0" y1="-410" x2="0" y2="410" stroke={THIN_GOLD} strokeDasharray="10 10" />
         <line x1="-410" y1="0" x2="410" y2="0" stroke={THIN_GOLD} strokeDasharray="10 10" />
 
@@ -318,7 +366,7 @@ const Astrolabe: React.FC<AstrolabeProps> = ({ active }) => {
                 fill="none" stroke={GOLD} strokeWidth="2"
                 initial={{ opacity: 0, scale: 0.5 }}
                 animate={{ opacity: [0, 1, 0], scale: 1.5, strokeWidth: [2, 10, 2] }}
-                transition={{ duration: 2, repeat: Infinity }}
+                transition={{ duration: 0.5, repeat: Infinity }}
             />
         )}
 
