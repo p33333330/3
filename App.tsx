@@ -139,7 +139,7 @@ const App: React.FC = () => {
     const ctx = audioCtxRef.current;
     const now = ctx.currentTime;
 
-    // 1. Low thrum/swell
+    // 1. Low thrum/swell (Extended for slower transition)
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.connect(gain);
@@ -147,17 +147,17 @@ const App: React.FC = () => {
     
     osc.type = 'triangle';
     osc.frequency.setValueAtTime(50, now);
-    osc.frequency.linearRampToValueAtTime(100, now + 1);
+    osc.frequency.linearRampToValueAtTime(100, now + 2.0); // Slow ramp up
     
     gain.gain.setValueAtTime(0, now);
-    gain.gain.linearRampToValueAtTime(0.2, now + 0.5);
-    gain.gain.linearRampToValueAtTime(0, now + 1.2);
+    gain.gain.linearRampToValueAtTime(0.2, now + 1.0); // Peak later
+    gain.gain.linearRampToValueAtTime(0, now + 2.2); // Fade out later
     
     osc.start(now);
-    osc.stop(now + 1.2);
+    osc.stop(now + 2.2);
 
-    // 2. High sparkle/noise sweep
-    const bufferSize = ctx.sampleRate * 1.5; // 1.5 seconds
+    // 2. High sparkle/noise sweep (Extended)
+    const bufferSize = ctx.sampleRate * 2.5; // Increased buffer size
     const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
     const data = buffer.getChannelData(0);
     for (let i = 0; i < bufferSize; i++) {
@@ -175,11 +175,11 @@ const App: React.FC = () => {
     noiseGain.connect(ctx.destination);
 
     noiseFilter.frequency.setValueAtTime(200, now);
-    noiseFilter.frequency.exponentialRampToValueAtTime(5000, now + 1); // Sweep up
+    noiseFilter.frequency.exponentialRampToValueAtTime(5000, now + 2.0); // Slower sweep
 
     noiseGain.gain.setValueAtTime(0, now);
-    noiseGain.gain.linearRampToValueAtTime(0.05, now + 0.5);
-    noiseGain.gain.linearRampToValueAtTime(0, now + 1.5);
+    noiseGain.gain.linearRampToValueAtTime(0.05, now + 1.0);
+    noiseGain.gain.linearRampToValueAtTime(0, now + 2.2);
 
     noise.start(now);
   }, [soundEnabled]);
@@ -318,7 +318,10 @@ const App: React.FC = () => {
     }
   }, [appMode]);
 
-  const handleGestureDetected = useCallback(async (gesture: string) => {
+  const handleGestureDetected = useCallback((gesture: string) => {
+    // Prevent multiple triggers if already exploding
+    if (isExploding) return;
+
     // 1. OPEN PALM - Reset / Shatter (Available in REVEALED state)
     if (appMode === AppMode.ORACLE && appState === AppState.REVEALED && gesture === "OPEN_PALM") {
         playExplosionSound(); // Plays Shatter sound
@@ -329,7 +332,7 @@ const App: React.FC = () => {
     // 2. CLOSED FIST - Reveal Prophecy (Available in SCANNING state)
     if (appMode === AppMode.ORACLE && appState === AppState.SCANNING && gesture === "CLOSED_FIST") {
       playLockSound(); // Immediate feedback
-      setTimeout(playRevealSound, 150); // Delayed swoosh
+      setTimeout(playRevealSound, 100); // Delayed swoosh
       
       setAppState(AppState.OPENING);
       
@@ -343,16 +346,15 @@ const App: React.FC = () => {
       
       setRevealType(nextRevealType);
 
-      // Fetch reading from Gemini
-      const cosmicResult = await getCosmicReading();
-      setReading(cosmicResult);
+      // Fetch reading from Gemini in background (non-blocking)
+      getCosmicReading().then(result => setReading(result));
       
-      // Delay slightly for dramatic effect before showing book fully
+      // Slowed transition time (2 seconds)
       setTimeout(() => {
         setAppState(AppState.REVEALED);
-      }, 500);
+      }, 2000); 
     }
-  }, [appState, appMode, playRevealSound, playLockSound, playExplosionSound]);
+  }, [appState, appMode, isExploding, playRevealSound, playLockSound, playExplosionSound]);
 
   const handleExplosionComplete = () => {
     setIsExploding(false);
@@ -458,8 +460,8 @@ const App: React.FC = () => {
             <AnimatePresence>
               {(appState === AppState.SCANNING || appState === AppState.OPENING) && (
                   <motion.div
-                    exit={{ opacity: 0, scale: 2, filter: "blur(20px)" }}
-                    transition={{ duration: 0.6, ease: "easeInOut" }}
+                    exit={{ opacity: 0, scale: 3, filter: "blur(30px)" }}
+                    transition={{ duration: 1.8, ease: "easeInOut" }}
                     className="absolute inset-0 z-20 flex items-center justify-center"
                   >
                     <Astrolabe active={appState === AppState.OPENING} />
@@ -473,7 +475,7 @@ const App: React.FC = () => {
                 <motion.div 
                   initial={{ opacity: 0 }}
                   animate={{ opacity: [0, 1, 0] }}
-                  transition={{ duration: 0.6, times: [0, 0.4, 1] }} 
+                  transition={{ duration: 2.0, times: [0, 0.5, 1] }} 
                   className="fixed inset-0 bg-[#F0E6D2] z-50 pointer-events-none mix-blend-overlay"
                 />
               )}

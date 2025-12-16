@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { motion } from 'framer-motion';
 
 interface GameBackgroundProps {
@@ -6,18 +6,78 @@ interface GameBackgroundProps {
 }
 
 const GOLD = "#dec888";
-const DARK_BG = "#050a14";
 
 const GameBackground: React.FC<GameBackgroundProps> = ({ score }) => {
   // Speed up rotation as score increases
-  const duration = Math.max(10, 80 - score * 2);
-  
+  const duration = Math.max(5, 80 - score * 2); 
+  // Pulse gets faster/more intense with score
+  const pulseDuration = Math.max(0.8, 4 - score * 0.1);
+
+  // Generate stars once to avoid re-renders shuffling them
+  const stars = useMemo(() => {
+      return Array.from({ length: 20 }).map((_, i) => ({
+          id: i,
+          left: Math.random() * 100,
+          top: Math.random() * 100,
+          size: Math.random() * 3 + 1,
+          duration: Math.random() * 8 + 4,
+          delay: Math.random() * 5
+      }));
+  }, []);
+
   return (
     <div className="absolute inset-0 z-0 flex items-center justify-center overflow-hidden bg-[#050a14]">
+       
+       {/* Reactive Pulsating Glow */}
+       <motion.div 
+          className="absolute inset-0 pointer-events-none"
+          animate={{
+              opacity: [0.2, 0.4 + Math.min(0.3, score * 0.01), 0.2],
+              scale: [0.8, 1 + Math.min(0.1, score * 0.005), 0.8],
+          }}
+          transition={{
+              duration: pulseDuration,
+              repeat: Infinity,
+              ease: "easeInOut"
+          }}
+          style={{
+              background: 'radial-gradient(circle at center, rgba(222, 200, 136, 0.15) 0%, rgba(5, 10, 20, 0) 60%)'
+          }}
+       />
+
+       {/* Drifting Stars */}
+       {stars.map((star) => (
+         <motion.div 
+            key={star.id}
+            className="absolute rounded-full bg-[#dec888]"
+            style={{ 
+                left: `${star.left}%`, 
+                top: `${star.top}%`,
+                width: star.size,
+                height: star.size,
+                opacity: 0.3
+            }}
+            animate={{
+                y: [0, -30, 0],
+                opacity: [0.2, 0.5, 0.2],
+                scale: [1, 1.2, 1]
+            }}
+            transition={{
+                duration: star.duration,
+                repeat: Infinity,
+                ease: "easeInOut",
+                delay: star.delay
+            }}
+         />
+       ))}
+
        <motion.div 
          className="w-[120vmin] h-[120vmin] opacity-40 blur-[1px]"
-         animate={{ scale: [1, 1.02, 1] }}
-         transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+         animate={{ 
+             scale: [1, 1.02, 1],
+             filter: [`blur(1px) brightness(1)`, `blur(1px) brightness(${1 + score * 0.01})`, `blur(1px) brightness(1)`]
+         }}
+         transition={{ duration: pulseDuration, repeat: Infinity, ease: "easeInOut" }}
        >
          <svg
             width="800"

@@ -39,10 +39,30 @@ const Astrolabe: React.FC<AstrolabeProps> = ({ active }) => {
   const createTextRing = (radius: number, count: number) => {
     return Array.from({ length: count }).map((_, i) => {
       const angle = (i / count) * 360;
+      // Stable random-ish values based on index to avoid jitter on re-renders if they happen
+      const randomDuration = 2 + (i % 5) * 0.5; 
+      const randomDelay = (i % 10) * 0.2;
+
       return (
         <g key={i} transform={`rotate(${angle}) translate(0, -${radius})`}>
-          <rect x="-1" y="-6" width="2" height="12" fill={GOLD} opacity={Math.random() * 0.5 + 0.5} />
-          {i % 3 === 0 && <circle cx="0" cy="-10" r="1" fill={GOLD} />}
+          <motion.rect 
+            x="-1" y="-6" width="2" height="12" fill={GOLD} 
+            initial={{ opacity: 0.5 }}
+            animate={{ opacity: [0.3, 0.8, 0.3] }}
+            transition={{ 
+                duration: randomDuration, 
+                delay: randomDelay, 
+                repeat: Infinity, 
+                ease: "easeInOut" 
+            }}
+          />
+          {i % 3 === 0 && (
+            <motion.circle 
+                cx="0" cy="-10" r="1" fill={GOLD} 
+                animate={{ opacity: [0.4, 1, 0.4], scale: [1, 1.2, 1] }}
+                transition={{ duration: randomDuration, delay: randomDelay, repeat: Infinity }}
+            />
+          )}
         </g>
       );
     });
@@ -75,7 +95,6 @@ const Astrolabe: React.FC<AstrolabeProps> = ({ active }) => {
   };
 
   // The 4 Intercardinal decorations (NE, SE, SW, NW) - smaller loops/lines
-  // UPDATED: Now uses motion.g and includes subtle hover effects
   const createIntercardinalDetails = (radius: number) => {
     return Array.from({ length: 4 }).map((_, i) => {
       const angle = i * 90 + 45;
@@ -180,14 +199,16 @@ const Astrolabe: React.FC<AstrolabeProps> = ({ active }) => {
               transition={{ duration: active ? 4 : 15, repeat: Infinity, ease: "linear" }}
             >
                 <circle cx="0" cy="0" r="135" fill="none" stroke={GOLD} strokeWidth="0.5" opacity="0.4" />
-                {/* 3 Small orbiting satellites */}
+                {/* 3 Small orbiting satellites with Pulse */}
                 {[0, 120, 240].map((angle, i) => (
-                    <circle 
+                    <motion.circle 
                         key={i} 
                         cx={Math.cos(angle * Math.PI / 180) * 135} 
                         cy={Math.sin(angle * Math.PI / 180) * 135} 
                         r="3" 
                         fill={GOLD}
+                        animate={{ scale: [1, 1.6, 1], opacity: [0.6, 1, 0.6] }}
+                        transition={{ duration: 1.5, repeat: Infinity, delay: i * 0.5 }}
                     />
                 ))}
             </motion.g>
@@ -232,9 +253,16 @@ const Astrolabe: React.FC<AstrolabeProps> = ({ active }) => {
       }}
       animate={{ 
         scale: active ? 1.1 : 1, 
-        filter: active ? "brightness(1.5) drop-shadow(0 0 20px rgba(222, 200, 136, 0.8))" : "brightness(1) drop-shadow(0 0 10px rgba(222, 200, 136, 0.2))"
+        // Breath in idle, Intense glow in active
+        filter: active 
+            ? ["brightness(1.5) drop-shadow(0 0 20px rgba(222, 200, 136, 0.8))", "brightness(1.8) drop-shadow(0 0 30px rgba(222, 200, 136, 1))", "brightness(1.5) drop-shadow(0 0 20px rgba(222, 200, 136, 0.8))"] 
+            : ["brightness(1) drop-shadow(0 0 10px rgba(222, 200, 136, 0.2))", "brightness(1.1) drop-shadow(0 0 15px rgba(222, 200, 136, 0.4))", "brightness(1) drop-shadow(0 0 10px rgba(222, 200, 136, 0.2))"]
       }}
-      transition={{ duration: 1.5 }}
+      transition={{ 
+          duration: active ? 2.0 : 4, // Slowed down from 0.5 to 2.0 to match app transition
+          repeat: Infinity,
+          ease: "easeInOut"
+      }}
     >
         {/* --- RECTANGULAR FRAME (HTML/CSS) --- */}
         <motion.div 
@@ -285,7 +313,7 @@ const Astrolabe: React.FC<AstrolabeProps> = ({ active }) => {
             <circle cx="0" cy="0" r="380" fill="none" stroke={GOLD} strokeWidth="2" />
             <circle cx="0" cy="0" r="340" fill="none" stroke={GOLD} strokeWidth="2" />
             
-            {/* The Text Ring Content */}
+            {/* The Text Ring Content (Shimmering) */}
             {createTextRing(360, 180)}
             
             {/* Runes/Glyphs scattered inside the next ring */}
@@ -334,10 +362,14 @@ const Astrolabe: React.FC<AstrolabeProps> = ({ active }) => {
               transition={{ duration: active ? 5 : 30, repeat: Infinity, ease: "linear" }}
             >
                  <circle cx="0" cy="0" r="125" fill="none" stroke={THIN_GOLD} strokeWidth="0.5" strokeDasharray="3 3" opacity="0.4"/>
-                 {/* 3 small satellites */}
+                 {/* 3 small satellites with Pulse */}
                  {[0, 120, 240].map(angle => (
                      <g key={angle} transform={`rotate(${angle}) translate(0, -125)`}>
-                        <circle r="3" fill={GOLD} />
+                        <motion.circle 
+                            r="3" fill={GOLD} 
+                            animate={{ scale: [1, 1.4, 1], fill: [GOLD, "#fff", GOLD] }}
+                            transition={{ duration: 2, repeat: Infinity, delay: angle * 0.01 }}
+                        />
                      </g>
                  ))}
             </motion.g>
